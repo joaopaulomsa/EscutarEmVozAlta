@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#10131a">
+<title>Leitor em Voz Alta</title>
+<style>
+:root{color-scheme:dark;--bg:#10131a;--panel:#191e28;--line:#2c3442;--text:#f2f5fa;--muted:#a9b4c5;--accent:#87e0c0;--accent-dark:#143e36;--warn:#ffd27a}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 50% -15%,#293848 0,transparent 48%),var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;display:grid;place-items:center;padding:24px}
+main{width:min(100%,760px);background:rgba(25,30,40,.96);border:1px solid var(--line);border-radius:22px;padding:clamp(22px,5vw,40px);box-shadow:0 24px 70px #0006}
+h1{margin:0;font-size:clamp(1.7rem,5vw,2.4rem);letter-spacing:-.04em}header p{margin:8px 0 26px;color:var(--muted)}label{display:block;font-weight:650;margin:18px 0 8px}textarea,select,input[type=range]{width:100%}textarea,select{background:#10151e;color:var(--text);border:1px solid #3a4556;border-radius:12px;padding:13px 14px;font:inherit}textarea{min-height:210px;resize:vertical;line-height:1.55}select:focus,textarea:focus,input:focus-visible,button:focus-visible{outline:3px solid #87e0c077;outline-offset:2px}.row{display:grid;grid-template-columns:1fr 1fr;gap:18px}.range-head{display:flex;justify-content:space-between;align-items:baseline}.range-head output{color:var(--accent);font-variant-numeric:tabular-nums}input[type=range]{accent-color:var(--accent)}.buttons{display:flex;flex-wrap:wrap;gap:10px;margin-top:24px}button{border:1px solid var(--line);border-radius:11px;padding:11px 17px;background:#252d3a;color:var(--text);font:inherit;font-weight:700;cursor:pointer}button:hover{filter:brightness(1.14)}button.primary{background:var(--accent);color:#102019;border-color:var(--accent)}button:disabled{opacity:.48;cursor:not-allowed}.status{min-height:26px;margin:16px 0 0;color:var(--muted);font-size:.92rem}.status.warn{color:var(--warn)}.foot{margin-top:20px;padding-top:16px;border-top:1px solid var(--line);color:var(--muted);font-size:.84rem}.counter{float:right;color:var(--muted);font-size:.82rem;font-weight:400}
+@media(max-width:560px){body{padding:12px}.row{grid-template-columns:1fr;gap:0}textarea{min-height:180px}.buttons button{flex:1}}
+</style>
+</head>
+<body>
+<main>
+<header><h1>Leitor em Voz Alta</h1><p>Cole ou digite um texto, escolha uma voz e escute.</p></header>
+<label for="text">Texto <span class="counter" id="counter">0 caracteres</span></label>
+<textarea id="text" placeholder="Cole seu texto aqui…" spellcheck="true"></textarea>
+<div class="row">
+<div><label for="voice">Voz disponível</label><select id="voice"><option value="">Carregando vozes…</option></select></div>
+<div><div class="range-head"><label for="rate">Velocidade</label><output id="rateValue">1,0×</output></div><input id="rate" type="range" min="0.6" max="1.5" step="0.1" value="1"></div>
+</div>
+<div class="range-head"><label for="pitch">Tom da voz</label><output id="pitchValue">1,0</output></div><input id="pitch" type="range" min="0.7" max="1.4" step="0.1" value="1">
+<div class="buttons"><button class="primary" id="play">▶ Ouvir</button><button id="pause" disabled>Ⅱ Pausar</button><button id="stop" disabled>■ Parar</button></div>
+<p class="status" id="status" role="status" aria-live="polite">Carregando as vozes disponíveis neste aparelho…</p>
+<div class="foot">A leitura usa as vozes instaladas ou oferecidas pelo navegador. A disponibilidade e o som podem variar entre aparelhos.</div>
+</main>
+<script>
+(()=>{
+const synth=window.speechSynthesis, textEl=document.querySelector('#text'), voiceEl=document.querySelector('#voice'), rateEl=document.querySelector('#rate'), pitchEl=document.querySelector('#pitch'), statusEl=document.querySelector('#status'), playBtn=document.querySelector('#play'), pauseBtn=document.querySelector('#pause'), stopBtn=document.querySelector('#stop');
+let voices=[];
+const pt=v=>(v.lang||'').toLowerCase().startsWith('pt');
+function updateStatus(message,warn=false){statusEl.textContent=message;statusEl.classList.toggle('warn',warn)}
+function loadVoices(){
+ if(!synth){voiceEl.innerHTML='<option>Navegador sem suporte a leitura de voz</option>';playBtn.disabled=true;updateStatus('Este navegador não oferece leitura em voz alta. Tente abrir o arquivo no Chrome ou Edge.',true);return}
+ voices=synth.getVoices();const previous=voiceEl.value;voiceEl.replaceChildren();
+ if(!voices.length){voiceEl.add(new Option('Voz padrão do aparelho',''));updateStatus('A lista de vozes ainda não carregou. Tente novamente em alguns segundos.',true);return}
+ const sorted=[...voices].sort((a,b)=>Number(pt(b))-Number(pt(a))||a.name.localeCompare(b.name));
+ voiceEl.add(new Option('Voz padrão do aparelho',''));
+ sorted.forEach(v=>voiceEl.add(new Option(`${v.name} — ${v.lang}${v.default?' (padrão)':''}`,String(voices.indexOf(v)))));
+ if(previous)voiceEl.value=previous;
+ const hasPt=voices.some(pt);updateStatus(hasPt?'Vozes prontas. As opções em português aparecem primeiro.':`Nenhuma voz em português apareceu. O aparelho tem ${voices.length} voz(es); instale uma voz pt-BR nas configurações do sistema, se disponível.` ,!hasPt);
+}
+function syncButtons(running){playBtn.disabled=running;pauseBtn.disabled=!running;stopBtn.disabled=!running;pauseBtn.textContent='Ⅱ Pausar'}
+textEl.addEventListener('input',()=>document.querySelector('#counter').textContent=`${textEl.value.length} caractere${textEl.value.length===1?'':'s'}`);
+rateEl.addEventListener('input',()=>document.querySelector('#rateValue').value=Number(rateEl.value).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1})+'×');
+pitchEl.addEventListener('input',()=>document.querySelector('#pitchValue').value=Number(pitchEl.value).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1}));
+playBtn.addEventListener('click',()=>{
+ const text=textEl.value.trim();if(!text){updateStatus('Cole ou digite algum texto primeiro.',true);textEl.focus();return}
+ synth.cancel();const utterance=new SpeechSynthesisUtterance(text);utterance.lang='pt-BR';utterance.rate=Number(rateEl.value);utterance.pitch=Number(pitchEl.value);
+ const selected=voiceEl.value;if(selected!==''&&voices[Number(selected)])utterance.voice=voices[Number(selected)];
+ utterance.onstart=()=>{syncButtons(true);updateStatus('Lendo o texto…')};utterance.onend=()=>{syncButtons(false);updateStatus('Leitura concluída.')};utterance.onerror=e=>{syncButtons(false);if(e.error!=='canceled'&&e.error!=='interrupted')updateStatus('Não foi possível iniciar a leitura. Tente outra voz ou outro navegador.',true)};
+ synth.speak(utterance);
+});
+pauseBtn.addEventListener('click',()=>{if(synth.paused){synth.resume();pauseBtn.textContent='Ⅱ Pausar';updateStatus('Leitura retomada.')}else{synth.pause();pauseBtn.textContent='▶ Continuar';updateStatus('Leitura pausada.')}});
+stopBtn.addEventListener('click',()=>{synth.cancel();syncButtons(false);updateStatus('Leitura parada.')});
+if(synth){loadVoices();synth.addEventListener?.('voiceschanged',loadVoices);setTimeout(loadVoices,600)}else loadVoices();
+})();
+</script>
+</body>
+</html>
