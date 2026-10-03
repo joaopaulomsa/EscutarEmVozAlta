@@ -25,14 +25,20 @@ h1{margin:0;font-size:clamp(1.7rem,5vw,2.4rem);letter-spacing:-.04em}header p{ma
 <div class="range-head"><label for="pitch">Tom da voz</label><output id="pitchValue">1,0</output></div><input id="pitch" type="range" min="0.7" max="1.4" step="0.1" value="1">
 <div class="buttons"><button class="primary" id="play">▶ Ouvir</button><button id="pause" disabled>Ⅱ Pausar</button><button id="stop" disabled>■ Parar</button></div>
 <p class="status" id="status" role="status" aria-live="polite">Carregando as vozes disponíveis neste aparelho…</p>
-<div class="foot">A leitura usa as vozes instaladas ou oferecidas pelo navegador. A disponibilidade e o som podem variar entre aparelhos.</div>
+<div class="foot">A leitura usa as vozes instaladas ou oferecidas pelo navegador. Ela tenta continuar quando você troca de programa e evita o bloqueio da tela durante a leitura. Alguns celulares podem suspender o navegador em segundo plano.</div>
 </main>
 <script>
 (()=>{
 const synth=window.speechSynthesis, textEl=document.querySelector('#text'), voiceEl=document.querySelector('#voice'), rateEl=document.querySelector('#rate'), pitchEl=document.querySelector('#pitch'), statusEl=document.querySelector('#status'), playBtn=document.querySelector('#play'), pauseBtn=document.querySelector('#pause'), stopBtn=document.querySelector('#stop');
-let voices=[];
+let voices=[], reading=false, manuallyPaused=false, wakeLock=null;
 const pt=v=>(v.lang||'').toLowerCase().startsWith('pt');
 function updateStatus(message,warn=false){statusEl.textContent=message;statusEl.classList.toggle('warn',warn)}
+async function requestWakeLock(){
+ if(!("wakeLock" in navigator)||document.visibilityState!=="visible"||!reading)return;
+ try{wakeLock=await navigator.wakeLock.request("screen");wakeLock.addEventListener("release",()=>{wakeLock=null})}catch(_){wakeLock=null}
+}
+async function releaseWakeLock(){if(wakeLock){try{await wakeLock.release()}catch(_){}wakeLock=null}}
+function finishReading(message){reading=false;manuallyPaused=false;syncButtons(false);releaseWakeLock();if(message)updateStatus(message)}
 function loadVoices(){
  if(!synth){voiceEl.innerHTML='<option>Navegador sem suporte a leitura de voz</option>';playBtn.disabled=true;updateStatus('Este navegador não oferece leitura em voz alta. Tente abrir o arquivo no Chrome ou Edge.',true);return}
  voices=synth.getVoices();const previous=voiceEl.value;voiceEl.replaceChildren();
@@ -51,11 +57,16 @@ playBtn.addEventListener('click',()=>{
  const text=textEl.value.trim();if(!text){updateStatus('Cole ou digite algum texto primeiro.',true);textEl.focus();return}
  synth.cancel();const utterance=new SpeechSynthesisUtterance(text);utterance.lang='pt-BR';utterance.rate=Number(rateEl.value);utterance.pitch=Number(pitchEl.value);
  const selected=voiceEl.value;if(selected!==''&&voices[Number(selected)])utterance.voice=voices[Number(selected)];
- utterance.onstart=()=>{syncButtons(true);updateStatus('Lendo o texto…')};utterance.onend=()=>{syncButtons(false);updateStatus('Leitura concluída.')};utterance.onerror=e=>{syncButtons(false);if(e.error!=='canceled'&&e.error!=='interrupted')updateStatus('Não foi possível iniciar a leitura. Tente outra voz ou outro navegador.',true)};
+ utterance.onstart=()=>{reading=true;manuallyPaused=false;syncButtons(true);requestWakeLock();updateStatus('Lendo o texto…')};utterance.onend=()=>finishReading('Leitura concluída.');utterance.onerror=e=>{finishReading();if(e.error!=='canceled'&&e.error!=='interrupted')updateStatus('Não foi possível iniciar a leitura. Tente outra voz ou outro navegador.',true)};
  synth.speak(utterance);
 });
-pauseBtn.addEventListener('click',()=>{if(synth.paused){synth.resume();pauseBtn.textContent='Ⅱ Pausar';updateStatus('Leitura retomada.')}else{synth.pause();pauseBtn.textContent='▶ Continuar';updateStatus('Leitura pausada.')}});
-stopBtn.addEventListener('click',()=>{synth.cancel();syncButtons(false);updateStatus('Leitura parada.')});
+pauseBtn.addEventListener('click',()=>{if(manuallyPaused){manuallyPaused=false;synth.resume();requestWakeLock();pauseBtn.textContent='Ⅱ Pausar';updateStatus('Leitura retomada.')}else{manuallyPaused=true;synth.pause();releaseWakeLock();pauseBtn.textContent='▶ Continuar';updateStatus('Leitura pausada.')}});
+stopBtn.addEventListener('click',()=>{synth.cancel();finishReading('Leitura parada.')});
+document.addEventListener('visibilitychange',()=>{
+ if(!reading||manuallyPaused)return;
+ if(synth.paused)synth.resume();
+ if(document.visibilityState==='visible')requestWakeLock();
+});
 if(synth){loadVoices();synth.addEventListener?.('voiceschanged',loadVoices);setTimeout(loadVoices,600)}else loadVoices();
 })();
 </script>
